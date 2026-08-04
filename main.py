@@ -45,13 +45,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚽ Test API Football en cours..."
+        if not FOOTBALL_API_KEY:
+    await update.message.reply_text(
+        "❌ Render n'envoie aucune clé API au bot."
     )
-
-    if not FOOTBALL_API_KEY:
-        await update.message.reply_text(
-            "❌ Clé API Football manquante dans Render."
-        )
-        return
+    return
+else:
+    await update.message.reply_text(
+        f"✅ Clé reçue : {FOOTBALL_API_KEY[:5]}*****"
+    )
 
     url = "https://v3.football.api-sports.io/fixtures"
 
