@@ -49,12 +49,12 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not FOOTBALL_API_KEY:
         await update.message.reply_text(
-            "❌ Render n'envoie aucune clé API au bot."
+            "❌ Aucune clé API reçue par le bot."
         )
         return
 
     await update.message.reply_text(
-        f"✅ Clé reçue : {FOOTBALL_API_KEY[:5]}*****"
+        f"✅ Clé reçue. Longueur : {len(FOOTBALL_API_KEY)} caractères"
     )
 
     url = "https://v3.football.api-sports.io/fixtures"
