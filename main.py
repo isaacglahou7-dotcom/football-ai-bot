@@ -3,13 +3,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import os
 import threading
 import requests
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY")
 
 
-# Petit serveur pour Render
+# Serveur pour Render
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -27,7 +28,9 @@ def run_server():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚽ Football AI Bot est en ligne !\n\n"
-        "Tape /help pour voir les commandes."
+        "Commandes :\n"
+        "/today - Matchs du jour\n"
+        "/help - Aide"
     )
 
 
@@ -46,43 +49,50 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not FOOTBALL_API_KEY:
         await update.message.reply_text(
-            "❌ Clé API Football manquante."
+            "❌ Clé API Football manquante dans Render."
         )
         return
 
     url = "https://v3.football.api-sports.io/fixtures"
 
     params = {
-        "date": "2026-08-04"
+        "date": datetime.now().strftime("%Y-%m-%d")
     }
 
     headers = {
         "x-apisports-key": FOOTBALL_API_KEY
     }
 
-    response = requests.get(
-        url,
-        headers=headers,
-        params=params
-    )
-
-    data = response.json()
-
-    if not data.get("response"):
-        await update.message.reply_text(
-            "Aucun match trouvé aujourd'hui."
+    try:
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=10
         )
-        return
 
-    message = "⚽ Matchs du jour :\n\n"
+        data = response.json()
 
-    for match in data["response"][:10]:
-        home = match["teams"]["home"]["name"]
-        away = match["teams"]["away"]["name"]
+        if not data.get("response"):
+            await update.message.reply_text(
+                "⚽ Aucun match trouvé aujourd'hui."
+            )
+            return
 
-        message += f"🏟 {home} vs {away}\n"
+        message = "⚽ Matchs du jour :\n\n"
 
-    await update.message.reply_text(message)
+        for match in data["response"][:15]:
+            home = match["teams"]["home"]["name"]
+            away = match["teams"]["away"]["name"]
+
+            message += f"🏟 {home} vs {away}\n"
+
+        await update.message.reply_text(message)
+
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Erreur API : {e}"
+        )
 
 
 def main():
