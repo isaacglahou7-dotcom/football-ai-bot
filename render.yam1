@@ -2,5 +2,8 @@ services:
   - type: worker
     name: football-ai-bot
     runtime: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python main.py"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
