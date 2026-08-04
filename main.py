@@ -52,10 +52,6 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await update.message.reply_text(
-        f"✅ Token reçu ({len(FOOTBALL_API_KEY)} caractères)"
-    )
-
     url = "https://api.football-data.org/v4/matches"
 
     headers = {
@@ -71,17 +67,13 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = response.json()
 
-        if "matches" not in data:
-            await update.message.reply_text(
-                f"❌ Erreur API : {data}"
-            )
-            return
-
-        matches = data["matches"]
+        matches = data.get("matches", [])
 
         if not matches:
             await update.message.reply_text(
-                "⚽ Aucun match trouvé aujourd'hui."
+                "⚽ Aucun match trouvé aujourd'hui.\n\n"
+                "Réponse API :\n"
+                f"{str(data)[:1500]}"
             )
             return
 
@@ -97,7 +89,7 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(
-            f"❌ Erreur : {e}"
+            f"❌ Erreur API : {e}"
         )
 
 
