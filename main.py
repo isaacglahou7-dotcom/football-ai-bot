@@ -3,11 +3,23 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import os
 import threading
 import requests
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY")
+
+
+# ==========================
+# CACHE POUR ACCELER LE BOT
+# ==========================
+
+TEAM_CACHE = {}
+MATCH_CACHE = {}
+
+CACHE_TIME = 1800   # 30 minutes
+
 
 
 # ==========================
@@ -17,17 +29,24 @@ FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY")
 class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+
         self.send_response(200)
+
         self.end_headers()
+
         self.wfile.write(
-            b"Football AI Bot is running"
+            b"Football AI Bot V3.3 running"
         )
+
 
 
 def run_server():
 
     port = int(
-        os.environ.get("PORT", 10000)
+        os.environ.get(
+            "PORT",
+            10000
+        )
     )
 
     server = HTTPServer(
@@ -35,14 +54,16 @@ def run_server():
         Handler
     )
 
-    print(f"Server running on port {port}")
+    print(
+        f"Server running on {port}"
+    )
 
     server.serve_forever()
 
 
 
 # ==========================
-# API FOOTBALL DATA
+# HEADERS API
 # ==========================
 
 def api_headers():
@@ -57,90 +78,43 @@ def api_headers():
 # COMPETITIONS
 # ==========================
 
-COMPETITIONS = {
+COMPETITIONS = [
 
-    "premier": "PL",
-    "champions": "CL",
-    "ligue1": "FL1",
-    "bundesliga": "BL1",
-    "seriea": "SA",
-    "laliga": "PD",
-    "eredivisie": "DED",
-    "primeira": "PPL",
-    "championship": "ELC",
-    "brasileirao": "BSA",
-    "libertadores": "CLI",
-    "worldcup": "WC"
+    "PL",      # Premier League
+    "PD",      # La Liga
+    "BL1",     # Bundesliga
+    "SA",      # Serie A
+    "FL1",     # Ligue 1
+    "CL",      # Champions League
+    "DED",     # Eredivisie
+    "PPL",     # Portugal
 
-}
+]
 
 
 
 # ==========================
-# MATCHS PAR COMPETITION
+# RECUPERATION MATCHS
 # ==========================
 
-def get_competition_matches(code):
+def get_matches():
 
-    url = (
-        "https://api.football-data.org/v4/"
-        f"competitions/{code}/matches"
-    )
+    now = time.time()
 
-    try:
 
-        response = requests.get(
-            url,
-            headers=api_headers(),
-            timeout=10
-        )
+    if "matches" in MATCH_CACHE:
 
-        data = response.json()
+        if now - MATCH_CACHE["time"] < CACHE_TIME:
 
-        return data.get(
-            "matches",
-            []
-        )
-
-    except:
-
-        return []
+            return MATCH_CACHE["matches"]
 
 
 
-# ==========================
-# HISTORIQUE EQUIPE CORRIGE
-# ==========================
-
-def get_team_history(team):
-
-    stats = {
-
-        "games": 0,
-        "wins": 0,
-        "draws": 0,
-        "losses": 0,
-        "goals_for": 0,
-        "goals_against": 0
-
-    }
+    all_matches = []
 
 
-    competitions = [
+    for comp in COMPETITIONS:
 
-        "PL",
-        "PD",
-        "BL1",
-        "SA",
-        "FL1"
-
-    ]
-
-
-    matches = []
-
-
-    for comp in competitions:
 
         url = (
             "https://api.football-data.org/v4/"
@@ -151,11 +125,15 @@ def get_team_history(team):
         try:
 
             response = requests.get(
+
                 url,
+
                 headers=api_headers(),
+
                 params={
-                    "status":"FINISHED"
+                    "status":"SCHEDULED"
                 },
+
                 timeout=10
             )
 
@@ -163,7 +141,95 @@ def get_team_history(team):
             data = response.json()
 
 
-            matches += data.get(
+            all_matches += data.get(
+                "matches",
+                []
+            )
+
+
+        except Exception:
+
+            pass
+
+
+
+    MATCH_CACHE["matches"] = all_matches
+
+    MATCH_CACHE["time"] = now
+
+
+    return all_matches
+
+
+
+# ==========================
+# HISTORIQUE EQUIPE AVEC CACHE
+# ==========================
+
+def get_team_history(team):
+
+
+    now = time.time()
+
+
+    if team in TEAM_CACHE:
+
+
+        saved = TEAM_CACHE[team]
+
+
+        if now - saved["time"] < CACHE_TIME:
+
+            return saved["data"]
+
+
+
+    stats = {
+
+        "games":0,
+        "wins":0,
+        "draws":0,
+        "losses":0,
+        "goals_for":0,
+        "goals_against":0
+
+    }
+
+
+
+    for comp in COMPETITIONS:
+
+
+        url = (
+
+            "https://api.football-data.org/v4/"
+
+            f"competitions/{comp}/matches"
+
+        )
+
+
+        try:
+
+            response = requests.get(
+
+                url,
+
+                headers=api_headers(),
+
+                params={
+                    "status":"FINISHED"
+                },
+
+                timeout=10
+
+            )
+
+
+            data = response.json()
+
+
+            matches = data.get(
                 "matches",
                 []
             )
@@ -171,92 +237,99 @@ def get_team_history(team):
 
         except:
 
-            pass
-
-
-
-    for match in matches:
-
-
-        home = match["homeTeam"]["name"]
-
-        away = match["awayTeam"]["name"]
-
-
-        if team not in [home, away]:
-
             continue
 
 
 
-        home_goals = match["score"]["fullTime"]["home"]
-
-        away_goals = match["score"]["fullTime"]["away"]
+        for match in matches:
 
 
-        if home_goals is None or away_goals is None:
+            home = match["homeTeam"]["name"]
 
-            continue
+            away = match["awayTeam"]["name"]
 
 
 
-        stats["games"] += 1
+            if team not in [home, away]:
+
+                continue
 
 
 
-        if team == home:
+            hg = match["score"]["fullTime"]["home"]
 
-
-            stats["goals_for"] += home_goals
-
-            stats["goals_against"] += away_goals
+            ag = match["score"]["fullTime"]["away"]
 
 
 
-            if home_goals > away_goals:
+            if hg is None or ag is None:
 
-                stats["wins"] += 1
-
-
-            elif home_goals == away_goals:
-
-                stats["draws"] += 1
-
-
-            else:
-
-                stats["losses"] += 1
+                continue
 
 
 
-        else:
-
-
-            stats["goals_for"] += away_goals
-
-            stats["goals_against"] += home_goals
+            stats["games"] += 1
 
 
 
-            if away_goals > home_goals:
-
-                stats["wins"] += 1
+            if team == home:
 
 
-            elif away_goals == home_goals:
+                stats["goals_for"] += hg
 
-                stats["draws"] += 1
+                stats["goals_against"] += ag
+
+
+
+                if hg > ag:
+
+                    stats["wins"] += 1
+
+                elif hg == ag:
+
+                    stats["draws"] += 1
+
+                else:
+
+                    stats["losses"] += 1
+
 
 
             else:
 
-                stats["losses"] += 1
 
+                stats["goals_for"] += ag
+
+                stats["goals_against"] += hg
+
+
+
+                if ag > hg:
+
+                    stats["wins"] += 1
+
+                elif ag == hg:
+
+                    stats["draws"] += 1
+
+                else:
+
+                    stats["losses"] += 1
+
+
+
+    TEAM_CACHE[team] = {
+
+        "time":now,
+
+        "data":stats
+
+    }
 
 
     return stats
     # ==========================
-# MOTEUR ANALYSE IA
+# MOTEUR IA FOOTBALL
 # ==========================
 
 
@@ -267,33 +340,110 @@ def calculate_prediction(home, away):
     away_stats = get_team_history(away)
 
 
-    if home_stats["games"] == 0 or away_stats["games"] == 0:
 
-        return None
+    # Même si peu de matchs, on utilise les données disponibles
+
+    home_games = max(
+        home_stats["games"],
+        1
+    )
+
+    away_games = max(
+        away_stats["games"],
+        1
+    )
+
+
+
+    home_attack = (
+        home_stats["goals_for"]
+        /
+        home_games
+    )
+
+
+    away_attack = (
+        away_stats["goals_for"]
+        /
+        away_games
+    )
+
+
+    home_defense = (
+        home_stats["goals_against"]
+        /
+        home_games
+    )
+
+
+    away_defense = (
+        away_stats["goals_against"]
+        /
+        away_games
+    )
 
 
 
     home_power = (
+
         home_stats["wins"] * 3
-        + home_stats["goals_for"]
-        - home_stats["goals_against"]
-        + 5
+
+        +
+
+        home_attack * 10
+
+        -
+
+        home_defense * 5
+
+        +
+
+        10
+
     )
+
 
 
     away_power = (
+
         away_stats["wins"] * 3
-        + away_stats["goals_for"]
-        - away_stats["goals_against"]
+
+        +
+
+        away_attack * 10
+
+        -
+
+        away_defense * 5
+
     )
 
 
-    total = home_power + away_power
+
+    if home_power < 1:
+
+        home_power = 10
 
 
-    if total <= 0:
+    if away_power < 1:
 
-        total = 1
+        away_power = 8
+
+
+
+    total = (
+
+        home_power
+
+        +
+
+        away_power
+
+        +
+
+        20
+
+    )
 
 
 
@@ -311,20 +461,27 @@ def calculate_prediction(home, away):
 
 
 
-    total_goals = (
+    # Probabilités buts
 
-        home_stats["goals_for"]
+    avg_goals = (
+
+        home_attack
+
         +
-        away_stats["goals_for"]
+
+        away_attack
 
     )
 
 
-    over25 = min(
-        85,
-        max(
-            35,
-            total_goals * 8
+
+    over25 = round(
+        min(
+            85,
+            max(
+                40,
+                avg_goals * 35
+            )
         )
     )
 
@@ -333,11 +490,24 @@ def calculate_prediction(home, away):
 
 
 
-    gg_yes = min(
-        80,
-        round(
-            (over25 * 0.75)
+    # Both teams score
+
+    gg_yes = round(
+
+        min(
+            80,
+            max(
+                35,
+                (
+                    home_attack
+                    +
+                    away_attack
+                )
+                *
+                35
+            )
         )
+
     )
 
 
@@ -345,45 +515,87 @@ def calculate_prediction(home, away):
 
 
 
-    one_x = home_win + draw
+    # Double chance
 
-    x_two = away_win + draw
+    one_x = min(
+        99,
+        home_win + draw
+    )
 
-    twelve = home_win + away_win
+
+    x_two = min(
+        99,
+        away_win + draw
+    )
+
+
+    twelve = min(
+        99,
+        home_win + away_win
+    )
 
 
 
-    if home_win > away_win:
+    # Score probable
 
-        score = "2-1"
+    home_goals = round(
+        home_attack
+    )
 
-    elif away_win > home_win:
 
-        score = "1-2"
+    away_goals = round(
+        away_attack
+    )
 
-    else:
 
-        score = "1-1"
+
+    if home_goals < 1:
+
+        home_goals = 1
+
+
+    if away_goals < 1:
+
+        away_goals = 1
+
+
+
+    score = (
+
+        f"{home_goals}-{away_goals}"
+
+    )
 
 
 
     return {
 
-        "home": home_win,
-        "draw": draw,
-        "away": away_win,
 
-        "over25": round(over25),
-        "under25": round(under25),
+        "home":home_win,
 
-        "gg_yes": gg_yes,
-        "gg_no": gg_no,
+        "draw":draw,
 
-        "1x": one_x,
-        "x2": x_two,
-        "12": twelve,
+        "away":away_win,
 
-        "score": score
+
+        "over25":over25,
+
+        "under25":under25,
+
+
+        "gg_yes":gg_yes,
+
+        "gg_no":gg_no,
+
+
+        "1x":one_x,
+
+        "x2":x_two,
+
+        "12":twelve,
+
+
+        "score":score
 
     }
 
@@ -391,24 +603,17 @@ def calculate_prediction(home, away):
 
 
 # ==========================
-# FORMAT MESSAGE IA
+# AFFICHAGE RESULTAT
 # ==========================
 
 
 def format_prediction(home, away):
 
-    result = calculate_prediction(
+
+    p = calculate_prediction(
         home,
         away
     )
-
-
-    if result is None:
-
-        return (
-            f"⚽ {home} vs {away}\n"
-            "❌ Données insuffisantes\n"
-        )
 
 
 
@@ -416,34 +621,38 @@ def format_prediction(home, away):
 
         f"⚽ {home} vs {away}\n\n"
 
-        f"🏠 Victoire {home}: {result['home']}%\n"
-        f"🤝 Nul: {result['draw']}%\n"
-        f"✈️ Victoire {away}: {result['away']}%\n\n"
+        f"🏠 {home}: {p['home']}%\n"
+
+        f"🤝 Nul: {p['draw']}%\n"
+
+        f"✈️ {away}: {p['away']}%\n\n"
 
 
-        f"⚽ Over 2.5: {result['over25']}%\n"
-        f"⚽ Under 2.5: {result['under25']}%\n\n"
+        f"⚽ Over 2.5 : {p['over25']}%\n"
+
+        f"⚽ Under 2.5 : {p['under25']}%\n\n"
 
 
-        f"🥅 GG Oui: {result['gg_yes']}%\n"
-        f"🚫 GG Non: {result['gg_no']}%\n\n"
+        f"🥅 GG Oui : {p['gg_yes']}%\n"
+
+        f"🚫 GG Non : {p['gg_no']}%\n\n"
 
 
         f"🔄 Double chance:\n"
-        f"1X: {result['1x']}%\n"
-        f"X2: {result['x2']}%\n"
-        f"12: {result['12']}%\n\n"
+
+        f"1X : {p['1x']}%\n"
+
+        f"X2 : {p['x2']}%\n"
+
+        f"12 : {p['12']}%\n\n"
 
 
-        f"🎯 Correct score probable: {result['score']}\n"
+        f"🎯 Score probable : {p['score']}\n"
 
         "━━━━━━━━━━━━━━\n"
 
     )
-
-
-
-# ==========================
+    # ==========================
 # COMMANDES TELEGRAM
 # ==========================
 
@@ -452,16 +661,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
 
-        "⚽ Football AI Bot V3.2\n\n"
+        "⚽ Football AI Bot V3.3 en ligne\n\n"
 
         "Commandes:\n"
-        "/leagues\n"
-        "/predict\n"
-        "/premier\n"
-        "/champions\n"
-        "/ligue1\n"
-        "/bundesliga\n"
-        "/seriea"
+
+        "/leagues - Compétitions\n"
+
+        "/predict - 20 analyses IA\n"
+
+        "/premier - Premier League\n"
+
+        "/champions - Champions League\n"
+
+        "/ligue1 - Ligue 1\n"
+
+        "/bundesliga - Bundesliga\n"
+
+        "/seriea - Serie A"
 
     )
 
@@ -471,13 +687,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
 
-        "/leagues - Compétitions\n"
-        "/predict - Analyse IA\n"
-        "/premier - Premier League\n"
-        "/champions - Champions League\n"
-        "/ligue1 - Ligue 1\n"
-        "/bundesliga - Bundesliga\n"
-        "/seriea - Serie A"
+        "/leagues\n"
+
+        "/predict\n"
+
+        "/premier\n"
+
+        "/champions\n"
+
+        "/ligue1\n"
+
+        "/bundesliga\n"
+
+        "/seriea"
 
     )
 
@@ -490,101 +712,54 @@ async def leagues(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏆 Compétitions disponibles:\n\n"
 
         "🇧🇷 Campeonato Brasileiro Série A\n"
+
         "🏴 Championship\n"
+
         "🏴 Premier League\n"
+
         "🏆 UEFA Champions League\n"
+
         "🌍 European Championship\n"
+
         "🇫🇷 Ligue 1\n"
+
         "🇩🇪 Bundesliga\n"
+
         "🇮🇹 Serie A\n"
+
         "🇳🇱 Eredivisie\n"
+
         "🇵🇹 Primeira Liga\n"
+
         "🌎 Copa Libertadores\n"
+
         "🇪🇸 Primera Division\n"
+
         "🌍 FIFA World Cup"
 
     )
-    # ==========================
-# RECUPERATION PREDICTIONS
-# ==========================
-
-
-async def competition_matches(update, code):
-
-    matches = get_competition_matches(code)
-
-
-    if not matches:
-
-        await update.message.reply_text(
-            "❌ Aucun match trouvé."
-        )
-
-        return
-
-
-
-    message = "🤖 ANALYSE IA\n\n"
-
-    count = 0
-
-
-    for match in matches:
-
-
-        home = match["homeTeam"]["name"]
-
-        away = match["awayTeam"]["name"]
-
-
-
-        message += format_prediction(
-            home,
-            away
-        )
-
-
-        count += 1
-
-
-        if count >= 5:
-
-            break
-
-
-
-    await update.message.reply_text(
-        message
-    )
 
 
 
 # ==========================
-# PREDICT TOUS MATCHS
+# PREDICTION 20 MATCHS
 # ==========================
 
 
 async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+
     await update.message.reply_text(
-        "🤖 Recherche des matchs à analyser..."
+
+        "🤖 Analyse IA en cours...\n"
+
+        "⏳ Recherche des matchs"
+
     )
 
 
-    matches = []
 
-
-    for code in [
-
-        "PL",
-        "PD",
-        "BL1",
-        "SA",
-        "FL1"
-
-    ]:
-
-        matches += get_competition_matches(code)
+    matches = get_matches()
 
 
 
@@ -592,14 +767,20 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
         await update.message.reply_text(
-            "❌ Aucun match disponible."
+
+            "❌ Aucun match disponible"
+
         )
 
         return
 
 
 
-    message = "🤖 PRÉDICTIONS IA DU JOUR\n\n"
+    message = (
+
+        "🤖 PRÉDICTIONS IA DES MATCHS\n\n"
+
+    )
 
 
 
@@ -617,22 +798,28 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
         message += format_prediction(
+
             home,
+
             away
+
         )
 
 
         count += 1
 
 
-        if count >= 5:
+
+        if count >= 20:
 
             break
 
 
 
     await update.message.reply_text(
+
         message
+
     )
 
 
@@ -644,7 +831,7 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def premier(update, context):
 
-    await competition_matches(
+    await competition_command(
         update,
         "PL"
     )
@@ -652,7 +839,7 @@ async def premier(update, context):
 
 async def champions(update, context):
 
-    await competition_matches(
+    await competition_command(
         update,
         "CL"
     )
@@ -660,7 +847,7 @@ async def champions(update, context):
 
 async def ligue1(update, context):
 
-    await competition_matches(
+    await competition_command(
         update,
         "FL1"
     )
@@ -668,7 +855,7 @@ async def ligue1(update, context):
 
 async def bundesliga(update, context):
 
-    await competition_matches(
+    await competition_command(
         update,
         "BL1"
     )
@@ -676,123 +863,108 @@ async def bundesliga(update, context):
 
 async def seriea(update, context):
 
-    await competition_matches(
+    await competition_command(
         update,
         "SA"
     )
 
 
-async def laliga(update, context):
 
-    await competition_matches(
-        update,
-        "PD"
+async def competition_command(update, code):
+
+
+    matches = get_competition_matches(code)
+
+
+    text = "🤖 Analyse IA\n\n"
+
+
+    for match in matches[:20]:
+
+
+        text += format_prediction(
+
+            match["homeTeam"]["name"],
+
+            match["awayTeam"]["name"]
+
+        )
+
+
+    await update.message.reply_text(
+
+        text
+
     )
 
 
 
 # ==========================
-# DEMARRAGE BOT
+# LANCEMENT
 # ==========================
 
 
 def main():
 
+
     threading.Thread(
+
         target=run_server,
+
         daemon=True
+
     ).start()
 
 
 
     app = ApplicationBuilder().token(
+
         BOT_TOKEN
+
     ).build()
 
 
 
     app.add_handler(
-        CommandHandler(
-            "start",
-            start
-        )
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CommandHandler("help", help_command)
+    )
+
+    app.add_handler(
+        CommandHandler("leagues", leagues)
+    )
+
+    app.add_handler(
+        CommandHandler("predict", predict)
     )
 
 
     app.add_handler(
-        CommandHandler(
-            "help",
-            help_command
-        )
+        CommandHandler("premier", premier)
     )
 
-
     app.add_handler(
-        CommandHandler(
-            "leagues",
-            leagues
-        )
+        CommandHandler("champions", champions)
     )
 
-
     app.add_handler(
-        CommandHandler(
-            "predict",
-            predict
-        )
+        CommandHandler("ligue1", ligue1)
     )
 
-
     app.add_handler(
-        CommandHandler(
-            "premier",
-            premier
-        )
+        CommandHandler("bundesliga", bundesliga)
     )
 
-
     app.add_handler(
-        CommandHandler(
-            "champions",
-            champions
-        )
-    )
-
-
-    app.add_handler(
-        CommandHandler(
-            "ligue1",
-            ligue1
-        )
-    )
-
-
-    app.add_handler(
-        CommandHandler(
-            "bundesliga",
-            bundesliga
-        )
-    )
-
-
-    app.add_handler(
-        CommandHandler(
-            "seriea",
-            seriea
-        )
-    )
-
-
-    app.add_handler(
-        CommandHandler(
-            "laliga",
-            laliga
-        )
+        CommandHandler("seriea", seriea)
     )
 
 
     print(
-        "🤖 Football AI Bot V3.2 démarré..."
+        "🤖 Football AI Bot V3.3 démarré..."
     )
 
 
