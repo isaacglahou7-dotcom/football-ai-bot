@@ -45,12 +45,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚽ Test API Football en cours..."
-        if not FOOTBALL_API_KEY:
-    await update.message.reply_text(
-        "❌ Render n'envoie aucune clé API au bot."
     )
-    return
-else:
+
+    if not FOOTBALL_API_KEY:
+        await update.message.reply_text(
+            "❌ Render n'envoie aucune clé API au bot."
+        )
+        return
+
     await update.message.reply_text(
         f"✅ Clé reçue : {FOOTBALL_API_KEY[:5]}*****"
     )
@@ -75,7 +77,6 @@ else:
 
         data = response.json()
 
-        # Affiche la réponse API pour diagnostic
         await update.message.reply_text(
             str(data)[:3000]
         )
