@@ -3,7 +3,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import os
 import threading
 import requests
-from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -44,46 +43,61 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "⚽ Test API Football en cours..."
+        "⚽ Recherche des matchs du jour..."
     )
 
     if not FOOTBALL_API_KEY:
         await update.message.reply_text(
-            "❌ Aucune clé API reçue par le bot."
+            "❌ Token football-data.org manquant dans Render."
         )
         return
 
     await update.message.reply_text(
-        f"✅ Clé reçue. Longueur : {len(FOOTBALL_API_KEY)} caractères"
+        f"✅ Token reçu ({len(FOOTBALL_API_KEY)} caractères)"
     )
 
-    url = "https://v3.football.api-sports.io/fixtures"
-
-    params = {
-        "date": datetime.now().strftime("%Y-%m-%d")
-    }
+    url = "https://api.football-data.org/v4/matches"
 
     headers = {
-        "x-apisports-key": FOOTBALL_API_KEY
+        "X-Auth-Token": FOOTBALL_API_KEY
     }
 
     try:
         response = requests.get(
             url,
             headers=headers,
-            params=params,
             timeout=10
         )
 
         data = response.json()
 
-        await update.message.reply_text(
-            str(data)[:3000]
-        )
+        if "matches" not in data:
+            await update.message.reply_text(
+                f"❌ Erreur API : {data}"
+            )
+            return
+
+        matches = data["matches"]
+
+        if not matches:
+            await update.message.reply_text(
+                "⚽ Aucun match trouvé aujourd'hui."
+            )
+            return
+
+        message = "⚽ Matchs du jour :\n\n"
+
+        for match in matches[:15]:
+            home = match["homeTeam"]["name"]
+            away = match["awayTeam"]["name"]
+
+            message += f"🏟 {home} vs {away}\n"
+
+        await update.message.reply_text(message)
 
     except Exception as e:
         await update.message.reply_text(
-            f"❌ Erreur API : {e}"
+            f"❌ Erreur : {e}"
         )
 
 
