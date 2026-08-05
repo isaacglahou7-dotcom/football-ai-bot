@@ -7,7 +7,6 @@ import asyncio
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY")
 PORT = int(os.getenv("PORT", 10000))
@@ -15,17 +14,14 @@ PORT = int(os.getenv("PORT", 10000))
 print("TOKEN OK:", BOT_TOKEN is not None)
 print("API KEY OK:", FOOTBALL_API_KEY is not None)
 
-
 BASE_URL = "https://v3.football.api-sports.io"
 
 HEADERS = {
     "x-apisports-key": FOOTBALL_API_KEY
 }
 
-
 CACHE = {}
 CACHE_TIME = 300
-
 
 def api_get(endpoint, params=None):
 
@@ -56,8 +52,6 @@ def api_get(endpoint, params=None):
         print("API ERROR:", e)
         return {}
 
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
@@ -65,8 +59,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/today - Matchs du jour\n"
         "/predict - Prédictions IA"
     )
-
-
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -78,14 +70,14 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if not data.get("response"):
+
         await update.message.reply_text(
             "Aucun match trouvé."
         )
+
         return
 
-
     message = "⚽ Matchs du jour:\n\n"
-
 
     for match in data["response"][:5]:
 
@@ -94,9 +86,9 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         message += f"🔥 {home} vs {away}\n"
 
-
     await update.message.reply_text(message)
-    def get_team_power(team_id, league_id, season):
+
+def get_team_power(team_id, league_id, season):
 
     stats = api_get(
         "/teams/statistics",
@@ -107,18 +99,31 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     )
 
-
     if not stats.get("response"):
         return 50
 
-
     power = 50
 
-    goals = stats["response"].get("goals", {})
+    goals = stats["response"].get(
+        "goals",
+        {}
+    )
 
-    scored = goals.get("for", {}).get("average", {})
-    conceded = goals.get("against", {}).get("average", {})
+    scored = goals.get(
+        "for",
+        {}
+    ).get(
+        "average",
+        {}
+    )
 
+    conceded = goals.get(
+        "against",
+        {}
+    ).get(
+        "average",
+        {}
+    )
 
     try:
 
@@ -131,10 +136,7 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
-
     return min(power, 90)
-
-
 
 async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -145,7 +147,6 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     )
 
-
     if not data.get("response"):
 
         await update.message.reply_text(
@@ -154,27 +155,18 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-
-
     message = "🤖 PRÉDICTIONS IA AVANCÉES\n\n"
 
-
-
     for match in data["response"][:5]:
-
 
         home = match["teams"]["home"]["name"]
         away = match["teams"]["away"]["name"]
 
-
         home_id = match["teams"]["home"]["id"]
         away_id = match["teams"]["away"]["id"]
 
-
         league_id = match["league"]["id"]
         season = match["league"]["season"]
-
-
 
         home_power = get_team_power(
             home_id,
@@ -182,33 +174,26 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             season
         )
 
-
         away_power = get_team_power(
             away_id,
             league_id,
             season
         )
 
-
-
         if home_power > away_power:
 
             result = f"Victoire {home}"
             confidence = home_power
-
 
         elif away_power > home_power:
 
             result = f"Victoire {away}"
             confidence = away_power
 
-
         else:
 
             result = "Match équilibré"
             confidence = 55
-
-
 
         message += (
             f"⚽ {home} vs {away}\n"
@@ -216,18 +201,14 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎯 Confiance: {confidence}%\n\n"
         )
 
-
-
     await update.message.reply_text(message)
-
-
-
 
 class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
 
         self.send_response(200)
+
         self.send_header(
             "Content-type",
             "text/plain"
@@ -238,8 +219,6 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(
             b"Football AI Bot is running"
         )
-
-
 
 def run_server():
 
@@ -255,52 +234,45 @@ def run_server():
 
     server.serve_forever()
 
-
-
-
 async def bot_start():
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    app = ApplicationBuilder().token(
+        BOT_TOKEN
+    ).build()
 
     app.add_handler(
         CommandHandler("start", start)
     )
 
-
     app.add_handler(
         CommandHandler("today", today)
     )
-
 
     app.add_handler(
         CommandHandler("predict", predict)
     )
 
-
     print("Bot demarre...")
-
 
     await app.initialize()
     await app.start()
-    await app.updater.start_polling()
 
+    await app.updater.start_polling(
+        drop_pending_updates=True
+    )
 
-    await asyncio.Event().wait()
+    while True:
+        await asyncio.sleep(3600)
 
+def run_bot():
 
-
+    asyncio.run(bot_start())
 
 if __name__ == "__main__":
-
 
     threading.Thread(
         target=run_server,
         daemon=True
     ).start()
 
-
-
-    asyncio.run(
-        bot_start()
-    )
+    run_bot()
