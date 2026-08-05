@@ -101,7 +101,7 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     await update.message.reply_text(message)
-    def analyse_team(team_id):
+def analyse_team(team_id):
 
     stats = api_get(
         "/teams/statistics",
