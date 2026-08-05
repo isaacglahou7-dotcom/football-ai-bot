@@ -7,6 +7,8 @@ import time
 import asyncio
 import threading
 
+from datetime import datetime
+
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -33,22 +35,31 @@ def api_get(endpoint, params=None):
     if key in CACHE:
 
         if time.time() - CACHE[key]["time"] < CACHE_TIME:
+
             return CACHE[key]["data"]
 
     try:
 
         response = requests.get(
+
             BASE_URL + endpoint,
+
             headers=HEADERS,
+
             params=params,
+
             timeout=20
+
         )
 
         data = response.json()
 
         CACHE[key] = {
+
             "time": time.time(),
+
             "data": data
+
         }
 
         return data
@@ -59,43 +70,55 @@ def api_get(endpoint, params=None):
 
         return {}
 
-def calculate_percentage(home_score, away_score):
+def get_date():
 
-    total = home_score + away_score
+    return datetime.now().strftime("%Y-%m-%d")
 
-    if total == 0:
+def limit(value):
 
-        return 33, 34, 33
+    if value < 0:
+        return 0
 
-    home = int((home_score / total) * 100)
+    if value > 100:
+        return 100
 
-    away = int((away_score / total) * 100)
-
-    draw = 100 - home - away
-
-    return home, draw, away
+    return value
 
 def get_team_form(team_id):
 
     data = api_get(
+
         "/fixtures",
+
         {
+
             "team": team_id,
+
             "last": 5
+
         }
+
     )
 
-    points = 0
-    goals_for = 0
-    goals_against = 0
+    form = {
+
+        "wins": 0,
+
+        "draws": 0,
+
+        "losses": 0,
+
+        "goals_for": 0,
+
+        "goals_against": 0,
+
+        "points": 0
+
+    }
 
     if not data.get("response"):
 
-        return {
-            "points": 0,
-            "goals_for": 0,
-            "goals_against": 0
-        }
+        return form
 
     for match in data["response"]:
 
@@ -103,92 +126,57 @@ def get_team_form(team_id):
 
         away = match["teams"]["away"]["id"]
 
-        home_goals = match["goals"]["home"] or 0
+        hg = match["goals"]["home"] or 0
 
-        away_goals = match["goals"]["away"] or 0
+        ag = match["goals"]["away"] or 0
 
         if team_id == home:
 
-            goals_for += home_goals
+            form["goals_for"] += hg
 
-            goals_against += away_goals
+            form["goals_against"] += ag
 
-            if home_goals > away_goals:
-                points += 3
+            if hg > ag:
 
-            elif home_goals == away_goals:
-                points += 1
+                form["wins"] += 1
+
+                form["points"] += 3
+
+            elif hg == ag:
+
+                form["draws"] += 1
+
+                form["points"] += 1
+
+            else:
+
+                form["losses"] += 1
 
         else:
 
-            goals_for += away_goals
+            form["goals_for"] += ag
 
-            goals_against += home_goals
+            form["goals_against"] += hg
 
-            if away_goals > home_goals:
-                points += 3
+            if ag > hg:
 
-            elif away_goals == home_goals:
-                points += 1
+                form["wins"] += 1
 
-    return {
+                form["points"] += 3
 
-        "points": points,
+            elif ag == hg:
 
-        "goals_for": goals_for,
+                form["draws"] += 1
 
-        "goals_against": goals_against
+                form["points"] += 1
 
-    }
+            else:
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+                form["losses"] += 1
 
-    await update.message.reply_text(
-        "⚽ Football AI Bot en ligne !\n\n"
-        "/today - Matchs disponibles\n"
-        "/predict - Prédictions IA avancées"
-    )
+    return form
 
-async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    data = api_get(
-        "/fixtures",
-        {
-            "date": "2026-08-05"
-        }
-    )
-
-    if not data.get("response"):
-
-        await update.message.reply_text(
-            "Aucun match trouvé."
-        )
-
-        return
-
-    message = "⚽ MATCHS DISPONIBLES:\n\n"
-
-    count = 0
-
-    for match in data["response"]:
-
-        home = match["teams"]["home"]["name"]
-
-        away = match["teams"]["away"]["name"]
-
-        message += (
-            f"🔥 {home} vs {away}\n"
-        )
-
-        count += 1
-
-        if count >= 10:
-
-            break
-
-    await update.message.reply_text(message)
-
-def analyse_match(match):
+def analyze_match(match):
 
     home = match["teams"]["home"]
 
@@ -202,19 +190,25 @@ def analyse_match(match):
         away["id"]
     )
 
-    home_power = (
+    home_score = (
 
         home_form["points"]
+
+        + (home_form["wins"] * 2)
 
         + home_form["goals_for"]
 
         - home_form["goals_against"]
 
+        + 8
+
     )
 
-    away_power = (
+    away_score = (
 
         away_form["points"]
+
+        + (away_form["wins"] * 2)
 
         + away_form["goals_for"]
 
@@ -222,65 +216,170 @@ def analyse_match(match):
 
     )
 
-    if home_power < 0:
+    if home_score < 1:
 
-        home_power = 0
+        home_score = 1
 
-    if away_power < 0:
+    if away_score < 1:
 
-        away_power = 0
+        away_score = 1
 
-    home_percent, draw_percent, away_percent = calculate_percentage(
+    total = home_score + away_score
 
-        home_power + 10,
-
-        away_power + 10
-
+    home_percent = int(
+        (home_score / total) * 65 + 15
     )
 
-    if home_percent > away_percent and home_percent > draw_percent:
+    away_percent = int(
+        (away_score / total) * 65 + 15
+    )
 
-        choice = (
+    draw_percent = 100 - home_percent - away_percent
+
+    if draw_percent < 15:
+
+        draw_percent = 15
+
+        if home_percent > away_percent:
+
+            home_percent -= 10
+
+        else:
+
+            away_percent -= 10
+
+    home_percent = limit(home_percent)
+
+    away_percent = limit(away_percent)
+
+    draw_percent = limit(draw_percent)
+
+    possibilities = {
+
+        "home": home_percent,
+
+        "draw": draw_percent,
+
+        "away": away_percent
+
+    }
+
+    best = max(
+        possibilities,
+        key=possibilities.get
+    )
+
+    if best == "home":
+
+        prediction = (
             "Victoire "
             + home["name"]
         )
 
-        reason = (
-            "Meilleure forme récente et avantage domicile."
-        )
+    elif best == "away":
 
-    elif away_percent > home_percent and away_percent > draw_percent:
-
-        choice = (
+        prediction = (
             "Victoire "
             + away["name"]
         )
 
-        reason = (
-            "Meilleure dynamique récente."
-        )
-
     else:
 
-        choice = "Match nul possible"
+        prediction = "Match nul possible"
 
-        reason = (
-            "Les statistiques sont proches."
-        )
+    confidence = possibilities[best]
+
+    reason = (
+
+        f"{home['name']} : "
+
+        f"{home_form['wins']}V "
+
+        f"{home_form['draws']}N "
+
+        f"{home_form['losses']}D, "
+
+        f"{home_form['goals_for']} buts marqués. "
+
+        f"{away['name']} : "
+
+        f"{away_form['wins']}V "
+
+        f"{away_form['draws']}N "
+
+        f"{away_form['losses']}D, "
+
+        f"{away_form['goals_for']} buts marqués."
+
+    )
 
     return {
 
-        "choice": choice,
+        "prediction": prediction,
 
-        "home_percent": home_percent,
+        "home": home_percent,
 
-        "draw_percent": draw_percent,
+        "draw": draw_percent,
 
-        "away_percent": away_percent,
+        "away": away_percent,
+
+        "confidence": confidence,
 
         "reason": reason
 
     }
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    await update.message.reply_text(
+
+        "⚽ Football AI Bot en ligne !\n\n"
+
+        "/today - Matchs du jour\n"
+
+        "/predict - Top prédictions IA"
+
+    )
+
+async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    data = api_get(
+
+        "/fixtures",
+
+        {
+
+            "date": get_date()
+
+        }
+
+    )
+
+    if not data.get("response"):
+
+        await update.message.reply_text(
+
+            "Aucun match trouvé."
+
+        )
+
+        return
+
+    message = "⚽ MATCHS DU JOUR\n\n"
+
+    for match in data["response"][:15]:
+
+        home = match["teams"]["home"]["name"]
+
+        away = match["teams"]["away"]["name"]
+
+        message += (
+
+            f"🔥 {home} vs {away}\n"
+
+        )
+
+    await update.message.reply_text(message)
 
 async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -289,7 +388,9 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/fixtures",
 
         {
-            "date": "2026-08-05"
+
+            "date": get_date()
+
         }
 
     )
@@ -304,17 +405,50 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    message = (
-
-        "🤖 PRÉDICTIONS IA AVANCÉES\n\n"
-
-    )
-
-    analysed = 0
+    results = []
 
     for match in data["response"]:
 
-        result = analyse_match(match)
+        try:
+
+            analysis = analyze_match(match)
+
+            results.append(
+
+                {
+
+                    "match": match,
+
+                    "analysis": analysis
+
+                }
+
+            )
+
+        except Exception as e:
+
+            print(
+                "ERROR:",
+                e
+            )
+
+    results.sort(
+
+        key=lambda x: x["analysis"]["confidence"],
+
+        reverse=True
+
+    )
+
+    message = "🤖 TOP PRÉDICTIONS IA\n\n"
+
+    count = 0
+
+    for item in results:
+
+        match = item["match"]
+
+        analysis = item["analysis"]
 
         home = match["teams"]["home"]["name"]
 
@@ -324,21 +458,23 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             f"⚽ {home} vs {away}\n"
 
-            f"📊 Choix: {result['choice']}\n"
+            f"✅ Choix: {analysis['prediction']}\n"
 
-            f"🏠 Domicile: {result['home_percent']}%\n"
+            f"🏠 Domicile: {analysis['home']}%\n"
 
-            f"🤝 Nul: {result['draw_percent']}%\n"
+            f"🤝 Nul: {analysis['draw']}%\n"
 
-            f"✈️ Extérieur: {result['away_percent']}%\n"
+            f"✈️ Extérieur: {analysis['away']}%\n"
 
-            f"🧠 Analyse: {result['reason']}\n\n"
+            f"🎯 Confiance IA: {analysis['confidence']}%\n"
+
+            f"🧠 Analyse: {analysis['reason']}\n\n"
 
         )
 
-        analysed += 1
+        count += 1
 
-        if analysed >= 10:
+        if count >= 5:
 
             break
 
@@ -351,26 +487,37 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
 
         self.send_header(
+
             "Content-type",
+
             "text/plain"
+
         )
 
         self.end_headers()
 
         self.wfile.write(
-            b"Football AI Bot is running"
+
+            b"Football AI Bot Running"
+
         )
 
 def run_server():
 
     server = HTTPServer(
+
         ("0.0.0.0", PORT),
+
         Handler
+
     )
 
     print(
-        "Server running on port",
+
+        "Server running on",
+
         PORT
+
     )
 
     server.serve_forever()
@@ -378,32 +525,51 @@ def run_server():
 async def bot_start():
 
     app = ApplicationBuilder().token(
+
         BOT_TOKEN
+
     ).build()
 
     app.add_handler(
+
         CommandHandler(
+
             "start",
+
             start
+
         )
+
     )
 
     app.add_handler(
+
         CommandHandler(
+
             "today",
+
             today
+
         )
+
     )
 
     app.add_handler(
+
         CommandHandler(
+
             "predict",
+
             predict
+
         )
+
     )
 
     print(
+
         "Bot demarre..."
+
     )
 
     await app.initialize()
@@ -411,7 +577,9 @@ async def bot_start():
     await app.start()
 
     await app.updater.start_polling(
+
         drop_pending_updates=True
+
     )
 
     while True:
@@ -421,7 +589,9 @@ async def bot_start():
 def run_bot():
 
     asyncio.run(
+
         bot_start()
+
     )
 
 if __name__ == "__main__":
