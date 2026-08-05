@@ -77,13 +77,10 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     )
 
-
     if not data.get("response"):
-
         await update.message.reply_text(
             "Aucun match trouvé."
         )
-
         return
 
 
@@ -95,47 +92,47 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         home = match["teams"]["home"]["name"]
         away = match["teams"]["away"]["name"]
 
-        message += (
-            f"🔥 {home} vs {away}\n"
-        )
+        message += f"🔥 {home} vs {away}\n"
 
 
     await update.message.reply_text(message)
-def analyse_team(team_id):
+    def get_team_power(team_id, league_id, season):
 
     stats = api_get(
         "/teams/statistics",
         {
             "team": team_id,
-            "season": 2025,
-            "league": 1
+            "league": league_id,
+            "season": season
         }
     )
+
 
     if not stats.get("response"):
         return 50
 
 
-    score = 50
+    power = 50
 
     goals = stats["response"].get("goals", {})
 
-    for_avg = goals.get("for", {}).get("average", {})
-    against_avg = goals.get("against", {}).get("average", {})
+    scored = goals.get("for", {}).get("average", {})
+    conceded = goals.get("against", {}).get("average", {})
 
 
     try:
-        if float(for_avg.get("home", 0)) >= 1.5:
-            score += 10
 
-        if float(against_avg.get("home", 0)) <= 1:
-            score += 10
+        if float(scored.get("home", 0)) >= 1.5:
+            power += 10
+
+        if float(conceded.get("home", 0)) <= 1:
+            power += 10
 
     except:
         pass
 
 
-    return min(score, 90)
+    return min(power, 90)
 
 
 
@@ -158,20 +155,40 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+
     message = "🤖 PRÉDICTIONS IA AVANCÉES\n\n"
+
 
 
     for match in data["response"][:5]:
 
+
         home = match["teams"]["home"]["name"]
         away = match["teams"]["away"]["name"]
+
 
         home_id = match["teams"]["home"]["id"]
         away_id = match["teams"]["away"]["id"]
 
 
-        home_power = analyse_team(home_id)
-        away_power = analyse_team(away_id)
+        league_id = match["league"]["id"]
+        season = match["league"]["season"]
+
+
+
+        home_power = get_team_power(
+            home_id,
+            league_id,
+            season
+        )
+
+
+        away_power = get_team_power(
+            away_id,
+            league_id,
+            season
+        )
+
 
 
         if home_power > away_power:
@@ -188,7 +205,7 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         else:
 
-            result = "Match nul possible"
+            result = "Match équilibré"
             confidence = 55
 
 
@@ -198,6 +215,7 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📊 Choix: {result}\n"
             f"🎯 Confiance: {confidence}%\n\n"
         )
+
 
 
     await update.message.reply_text(message)
@@ -239,6 +257,7 @@ def run_server():
 
 
 
+
 async def bot_start():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -248,9 +267,11 @@ async def bot_start():
         CommandHandler("start", start)
     )
 
+
     app.add_handler(
         CommandHandler("today", today)
     )
+
 
     app.add_handler(
         CommandHandler("predict", predict)
@@ -269,12 +290,15 @@ async def bot_start():
 
 
 
+
 if __name__ == "__main__":
+
 
     threading.Thread(
         target=run_server,
         daemon=True
     ).start()
+
 
 
     asyncio.run(
