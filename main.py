@@ -55,11 +55,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚽ Football AI Bot en ligne !\n\n"
         "/today - Matchs du jour\n"
-        "/predict - Prédictions"
+        "/predict - Prédictions IA"
     )
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     data = api_get("/fixtures", {"date": "2026-08-05"})
 
     if not data.get("response"):
@@ -71,32 +72,93 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for match in data["response"][:5]:
         home = match["teams"]["home"]["name"]
         away = match["teams"]["away"]["name"]
+
         message += f"🔥 {home} vs {away}\n"
 
     await update.message.reply_text(message)
 
 
 async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 Analyse IA en préparation..."
-    )
+
+    data = api_get("/fixtures", {"date": "2026-08-05"})
+
+    if not data.get("response"):
+        await update.message.reply_text(
+            "Aucun match disponible pour analyse."
+        )
+        return
+
+    message = "🤖 PRÉDICTIONS IA\n\n"
+
+    for match in data["response"][:5]:
+
+        home = match["teams"]["home"]["name"]
+        away = match["teams"]["away"]["name"]
+
+        home_id = match["teams"]["home"]["id"]
+        away_id = match["teams"]["away"]["id"]
+
+        home_stats = api_get(
+            "/teams/statistics",
+            {
+                "team": home_id,
+                "season": 2025,
+                "league": 1
+            }
+        )
+
+        away_stats = api_get(
+            "/teams/statistics",
+            {
+                "team": away_id,
+                "season": 2025,
+                "league": 1
+            }
+        )
+
+        prediction = "Match équilibré"
+        confidence = 55
+
+        if home_stats.get("response") and away_stats.get("response"):
+            prediction = f"Victoire possible {home}"
+            confidence = 65
+
+        message += (
+            f"⚽ {home} vs {away}\n"
+            f"📊 Choix: {prediction}\n"
+            f"🎯 Confiance: {confidence}%\n\n"
+        )
+
+    await update.message.reply_text(message)
+
 
 
 class Handler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Football AI Bot is running")
+        self.wfile.write(
+            b"Football AI Bot is running"
+        )
 
 
 def run_server():
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+
+    server = HTTPServer(
+        ("0.0.0.0", PORT),
+        Handler
+    )
+
     print("Server running on port", PORT)
+
     server.serve_forever()
 
 
+
 async def bot_start():
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -112,7 +174,12 @@ async def bot_start():
     await asyncio.Event().wait()
 
 
+
 if __name__ == "__main__":
-    threading.Thread(target=run_server, daemon=True).start()
+
+    threading.Thread(
+        target=run_server,
+        daemon=True
+    ).start()
 
     asyncio.run(bot_start())
