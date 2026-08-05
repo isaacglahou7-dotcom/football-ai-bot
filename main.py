@@ -95,28 +95,28 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         home = match["teams"]["home"]["name"]
         away = match["teams"]["away"]["name"]
 
-
         message += (
             f"🔥 {home} vs {away}\n"
         )
 
 
     await update.message.reply_text(message)
-    def analyse_team(team_id, league_id=1):
+    def analyse_team(team_id):
 
     stats = api_get(
         "/teams/statistics",
         {
             "team": team_id,
             "season": 2025,
-            "league": league_id
+            "league": 1
         }
     )
-
 
     if not stats.get("response"):
         return 50
 
+
+    score = 50
 
     goals = stats["response"].get("goals", {})
 
@@ -124,17 +124,15 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     against_avg = goals.get("against", {}).get("average", {})
 
 
-    score = 50
-
-
-    if for_avg.get("home"):
-        if float(for_avg["home"]) >= 1.5:
+    try:
+        if float(for_avg.get("home", 0)) >= 1.5:
             score += 10
 
-
-    if against_avg.get("home"):
-        if float(against_avg["home"]) <= 1:
+        if float(against_avg.get("home", 0)) <= 1:
             score += 10
+
+    except:
+        pass
 
 
     return min(score, 90)
@@ -160,7 +158,6 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-
     message = "🤖 PRÉDICTIONS IA AVANCÉES\n\n"
 
 
@@ -179,29 +176,32 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if home_power > away_power:
 
-            choice = f"Victoire {home}"
+            result = f"Victoire {home}"
             confidence = home_power
+
 
         elif away_power > home_power:
 
-            choice = f"Victoire {away}"
+            result = f"Victoire {away}"
             confidence = away_power
+
 
         else:
 
-            choice = "Match nul possible"
+            result = "Match nul possible"
             confidence = 55
 
 
 
         message += (
             f"⚽ {home} vs {away}\n"
-            f"📊 Choix: {choice}\n"
+            f"📊 Choix: {result}\n"
             f"🎯 Confiance: {confidence}%\n\n"
         )
 
 
     await update.message.reply_text(message)
+
 
 
 
