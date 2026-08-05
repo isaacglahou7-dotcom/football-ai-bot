@@ -28,30 +28,38 @@ CACHE_TIME = 300
 
 
 def api_get(endpoint, params=None):
+
     key = endpoint + str(params)
 
     if key in CACHE:
         if time.time() - CACHE[key]["time"] < CACHE_TIME:
             return CACHE[key]["data"]
 
-    response = requests.get(
-        BASE_URL + endpoint,
-        headers=HEADERS,
-        params=params,
-        timeout=20
-    )
+    try:
+        response = requests.get(
+            BASE_URL + endpoint,
+            headers=HEADERS,
+            params=params,
+            timeout=20
+        )
 
-    data = response.json()
+        data = response.json()
 
-    CACHE[key] = {
-        "time": time.time(),
-        "data": data
-    }
+        CACHE[key] = {
+            "time": time.time(),
+            "data": data
+        }
 
-    return data
+        return data
+
+    except Exception as e:
+        print("API ERROR:", e)
+        return {}
+
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
         "⚽ Football AI Bot en ligne !\n\n"
         "/today - Matchs du jour\n"
@@ -59,36 +67,102 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = api_get("/fixtures", {"date": "2026-08-05"})
+    data = api_get(
+        "/fixtures",
+        {
+            "date": "2026-08-05"
+        }
+    )
+
 
     if not data.get("response"):
-        await update.message.reply_text("Aucun match trouvé.")
+
+        await update.message.reply_text(
+            "Aucun match trouvé."
+        )
+
         return
+
 
     message = "⚽ Matchs du jour:\n\n"
 
+
     for match in data["response"][:5]:
+
         home = match["teams"]["home"]["name"]
         away = match["teams"]["away"]["name"]
 
-        message += f"🔥 {home} vs {away}\n"
+
+        message += (
+            f"🔥 {home} vs {away}\n"
+        )
+
 
     await update.message.reply_text(message)
+    def analyse_team(team_id, league_id=1):
+
+    stats = api_get(
+        "/teams/statistics",
+        {
+            "team": team_id,
+            "season": 2025,
+            "league": league_id
+        }
+    )
+
+
+    if not stats.get("response"):
+        return 50
+
+
+    goals = stats["response"].get("goals", {})
+
+    for_avg = goals.get("for", {}).get("average", {})
+    against_avg = goals.get("against", {}).get("average", {})
+
+
+    score = 50
+
+
+    if for_avg.get("home"):
+        if float(for_avg["home"]) >= 1.5:
+            score += 10
+
+
+    if against_avg.get("home"):
+        if float(against_avg["home"]) <= 1:
+            score += 10
+
+
+    return min(score, 90)
+
 
 
 async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = api_get("/fixtures", {"date": "2026-08-05"})
+    data = api_get(
+        "/fixtures",
+        {
+            "date": "2026-08-05"
+        }
+    )
+
 
     if not data.get("response"):
+
         await update.message.reply_text(
-            "Aucun match disponible pour analyse."
+            "Aucun match disponible."
         )
+
         return
 
-    message = "🤖 PRÉDICTIONS IA\n\n"
+
+
+    message = "🤖 PRÉDICTIONS IA AVANCÉES\n\n"
+
 
     for match in data["response"][:5]:
 
@@ -98,36 +172,34 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         home_id = match["teams"]["home"]["id"]
         away_id = match["teams"]["away"]["id"]
 
-        home_stats = api_get(
-            "/teams/statistics",
-            {
-                "team": home_id,
-                "season": 2025,
-                "league": 1
-            }
-        )
 
-        away_stats = api_get(
-            "/teams/statistics",
-            {
-                "team": away_id,
-                "season": 2025,
-                "league": 1
-            }
-        )
+        home_power = analyse_team(home_id)
+        away_power = analyse_team(away_id)
 
-        prediction = "Match équilibré"
-        confidence = 55
 
-        if home_stats.get("response") and away_stats.get("response"):
-            prediction = f"Victoire possible {home}"
-            confidence = 65
+        if home_power > away_power:
+
+            choice = f"Victoire {home}"
+            confidence = home_power
+
+        elif away_power > home_power:
+
+            choice = f"Victoire {away}"
+            confidence = away_power
+
+        else:
+
+            choice = "Match nul possible"
+            confidence = 55
+
+
 
         message += (
             f"⚽ {home} vs {away}\n"
-            f"📊 Choix: {prediction}\n"
+            f"📊 Choix: {choice}\n"
             f"🎯 Confiance: {confidence}%\n\n"
         )
+
 
     await update.message.reply_text(message)
 
@@ -136,12 +208,19 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+        self.send_header(
+            "Content-type",
+            "text/plain"
+        )
+
         self.end_headers()
+
         self.wfile.write(
             b"Football AI Bot is running"
         )
+
 
 
 def run_server():
@@ -151,7 +230,10 @@ def run_server():
         Handler
     )
 
-    print("Server running on port", PORT)
+    print(
+        "Server running on port",
+        PORT
+    )
 
     server.serve_forever()
 
@@ -161,15 +243,27 @@ async def bot_start():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("today", today))
-    app.add_handler(CommandHandler("predict", predict))
+
+    app.add_handler(
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CommandHandler("today", today)
+    )
+
+    app.add_handler(
+        CommandHandler("predict", predict)
+    )
+
 
     print("Bot demarre...")
+
 
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
+
 
     await asyncio.Event().wait()
 
@@ -182,4 +276,7 @@ if __name__ == "__main__":
         daemon=True
     ).start()
 
-    asyncio.run(bot_start())
+
+    asyncio.run(
+        bot_start()
+    )
