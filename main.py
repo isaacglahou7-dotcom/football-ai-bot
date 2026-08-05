@@ -3,6 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import os
 import requests
 import time
+import asyncio
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY")
@@ -53,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = api_get("/fixtures", {"date": "2026-08-04"})
+    data = api_get("/fixtures", {"date": "2026-08-05"})
 
     if not data.get("response"):
         await update.message.reply_text("Aucun match trouvé.")
@@ -75,13 +76,21 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-if __name__ == "__main__":
-    print("Démarrage du bot...")
-
+async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("predict", predict))
 
-    app.run_polling()
+    print("Démarrage du bot...")
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
