@@ -4,18 +4,24 @@ import os
 import requests
 import time
 import asyncio
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY")
+PORT = int(os.getenv("PORT", 10000))
 
 print("TOKEN OK:", BOT_TOKEN is not None)
 print("API KEY OK:", FOOTBALL_API_KEY is not None)
+
 
 BASE_URL = "https://v3.football.api-sports.io"
 
 HEADERS = {
     "x-apisports-key": FOOTBALL_API_KEY
 }
+
 
 CACHE = {}
 CACHE_TIME = 300
@@ -76,14 +82,28 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def main():
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Football AI Bot is running")
+
+
+def run_server():
+    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    print("Server running on port", PORT)
+    server.serve_forever()
+
+
+async def bot_start():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("predict", predict))
 
-    print("Démarrage du bot...")
+    print("Bot demarre...")
 
     await app.initialize()
     await app.start()
@@ -93,4 +113,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    threading.Thread(target=run_server, daemon=True).start()
+
+    asyncio.run(bot_start())
